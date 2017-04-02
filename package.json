@@ -1,17 +1,40 @@
 {
-    "buildNpmdoc":"express-generator",
+    "author": "kai zhu <kaizhu256@gmail.com>",
+    "buildNpmdoc": "express-generator",
+    "description": "api documentation for [express-generator (v4.15.0)](https://github.com/expressjs/generator#readme) [![npm package](https://img.shields.io/npm/v/npmdoc-express-generator.svg?style=flat-square)](https://www.npmjs.org/package/npmdoc-express-generator) [![travis-ci.org build-status](https://api.travis-ci.org/npmdoc/node-npmdoc-express-generator.svg)](https://travis-ci.org/npmdoc/node-npmdoc-express-generator)",
     "devDependencies": {
-        "express-generator": "*",
         "electron-lite": "kaizhu256/node-electron-lite#alpha",
+        "express-generator": "*",
         "utility2": "kaizhu256/node-utility2#alpha"
     },
-    "name":"npmdoc-express-generator",
+    "engines": {
+        "node": ">=4.0"
+    },
+    "homepage": "https://github.com/npmdoc/node-npmdoc-express-generator",
+    "keywords": [
+        "documentation",
+        "express-generator"
+    ],
+    "license": "MIT",
+    "main": "lib.npmdoc_express_generator.js",
+    "name": "npmdoc-express-generator",
+    "nameAlias": "npmdoc_express_generator",
+    "nameOriginal": "npmdoc-express-generator",
+    "os": [
+        "darwin",
+        "linux"
+    ],
     "repository": {
         "type": "git",
         "url": "https://github.com/npmdoc/node-npmdoc-express-generator.git"
     },
     "scripts": {
-        "build-ci": "utility2 shReadmeTest build_ci.sh"
+        "build-ci": "utility2 shReadmeTest build_ci.sh",
+        "env": "env",
+        "heroku-postbuild": "(set -e; npm install \"kaizhu256/node-utility2#alpha\"; utility2 shDeployHeroku)",
+        "postinstall": "if [ -f npm_scripts.sh ]; then ./npm_scripts.sh postinstall; fi",
+        "start": "(set -e; export PORT=${PORT:-8080}; utility2 start test.js)",
+        "test": "(set -e; export PORT=$(utility2 shServerPortRandom); utility2 test test.js)"
     },
     "version": "0.0.1"
 }
