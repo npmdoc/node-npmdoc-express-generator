@@ -221,6 +221,15 @@ instruction
             return arg;
         };
 
+        local.onErrorDefault = function (error) {
+        /*
+         * this function will if error exists, then print error.stack to stderr
+         */
+            if (error && !local.global.__coverage__) {
+                console.error(error);
+            }
+        };
+
         local.stringHtmlSafe = function (text) {
         /*
          * this function will make the text html-safe
@@ -324,6 +333,24 @@ instruction
                 });
                 return String(value);
             });
+        };
+
+        local.tryCatchOnError = function (fnc, onError) {
+        /*
+         * this function will try to run the fnc in a try-catch block,
+         * else call onError with the errorCaught
+         */
+            // validate onError
+            local.assert(typeof onError === 'function', typeof onError);
+            try {
+                // reset errorCaught
+                local._debugTryCatchErrorCaught = null;
+                return fnc();
+            } catch (errorCaught) {
+                // debug errorCaught
+                local._debugTryCatchErrorCaught = errorCaught;
+                return onError(errorCaught);
+            }
         };
     }());
 
@@ -545,10 +572,9 @@ local.templateApidocMd = '\
                 element.source = 'n/a';
                 // bug-workaround - catch and ignore error
                 // "Function.prototype.toString is not generic"
-                try {
+                local.tryCatchOnError(function () {
                     element.source = trimLeft(module[key].toString());
-                } catch (ignore) {
-                }
+                }, local.onErrorDefault);
                 if (element.source.length > 4096) {
                     element.source = element.source.slice(0, 4096).trimRight() + ' ...';
                 }
@@ -668,17 +694,19 @@ local.templateApidocMd = '\
                             (/^(?:readme)\b/i).test(file) ||
                             (/^(?:index|lib|test)\b.*\.js$/i).test(file);
                     })
-            ).map(readExample));
+            ).map(readExample))
+                .filter(function (element) {
+                    return element.trim();
+                })
+                .slice(0, 128);
             // init moduleMain
-            try {
+            local.tryCatchOnError(function () {
                 console.error('apidocCreate - requiring ' + options.dir + ' ...');
                 moduleMain = {};
                 moduleMain = options.moduleDict[options.env.npm_package_name] ||
                     require(options.dir);
                 console.error('apidocCreate - ... required ' + options.dir);
-            } catch (errorCaught) {
-                console.error(errorCaught);
-            }
+            }, local.onErrorDefault);
             tmp = {};
             // handle case where module is a function
             if (typeof moduleMain === 'function') {
@@ -727,22 +755,21 @@ local.templateApidocMd = '\
             local.apidocModuleDictAdd(options, options.moduleDict);
             // init moduleExtraDict
             local.fs.readdirSync(options.dir).sort().forEach(function (file) {
-                try {
+                local.tryCatchOnError(function () {
                     local.fs.readdirSync(options.dir + '/' + file).sort().forEach(function (
                         file2
                     ) {
                         file2 = file + '/' + file2;
                         options.libFileList.push(file2);
                     });
-                } catch (errorCaught) {
+                }, function () {
                     options.libFileList.push(file);
-                }
+                });
             });
             module = options.moduleExtraDict[options.env.npm_package_name] =
                 options.moduleExtraDict[options.env.npm_package_name] || {};
-            options.exampleList = options.exampleList.slice(0, 64);
             options.libFileList.some(function (file) {
-                try {
+                local.tryCatchOnError(function () {
                     tmp = {};
                     tmp.name = local.path.basename(file)
                         .replace('lib.', '')
@@ -780,9 +807,8 @@ local.templateApidocMd = '\
                     module[tmp.name] = tmp.module;
                     // update exampleList
                     options.exampleList.push(readExample(file));
-                } catch (ignore) {
-                }
-                return options.exampleList.length < 128;
+                }, local.onErrorDefault);
+                return options.exampleList.length < 256;
             });
             local.apidocModuleDictAdd(options, options.moduleExtraDict);
             Object.keys(options.moduleDict).forEach(function (key) {
@@ -799,22 +825,20 @@ local.templateApidocMd = '\
                     module = options.moduleDict[prefix];
                     // handle case where module is a function
                     if (typeof module === 'function') {
-                        try {
+                        local.tryCatchOnError(function () {
                             module[prefix.split('.').slice(-1)[0]] =
                                 module[prefix.split('.').slice(-1)[0]] || module;
-                        } catch (ignore) {
-                        }
+                        }, local.onErrorDefault);
                     }
                     return {
                         elementList: Object.keys(module)
                             .filter(function (key) {
-                                try {
+                                local.tryCatchOnError(function () {
                                     return key &&
                                         (/^\w[\w\-.]*?$/).test(key) &&
                                         key.indexOf('testCase_') !== 0 &&
                                         module[key] !== options.blacklistDict[key];
-                                } catch (ignore) {
-                                }
+                                }, local.onErrorDefault);
                             })
                             .map(function (key) {
                                 return elementCreate(module, prefix, key);
@@ -850,7 +874,7 @@ local.templateApidocMd = '\
                             return;
                         }
                         // bug-workaround - buggy electron accessors
-                        try {
+                        local.tryCatchOnError(function () {
                             tmp = element === 'prototype'
                                 ? {
                                     module: moduleDict[prefix][key].prototype,
@@ -872,10 +896,9 @@ local.templateApidocMd = '\
                                 tmp.module.prototype
                             ].some(function (dict) {
                                 return Object.keys(dict || {}).some(function (key) {
-                                    try {
+                                    local.tryCatchOnError(function () {
                                         return typeof dict[key] === 'function';
-                                    } catch (ignore) {
-                                    }
+                                    }, local.onErrorDefault);
                                 });
                             });
                             if (!isModule) {
@@ -883,8 +906,7 @@ local.templateApidocMd = '\
                             }
                             options.circularList.push(tmp.module);
                             options.moduleDict[tmp.name] = tmp.module;
-                        } catch (ignore) {
-                        }
+                        }, local.onErrorDefault);
                     });
                 });
             });
@@ -10167,6 +10189,9 @@ local.assetsDict['/assets.readmeCustomOrg.npmdoc.template.md'] = '\
 [![NPM](https://nodei.co/npm/{{env.npm_package_name}}.png?downloads=true&downloadRank=true&stars=true)](https://www.npmjs.com/package/{{env.npm_package_name}}) \
 \n\
 \n\
+- [https://npmdoc.github.io/node-npmdoc-{{env.npm_package_name}}/build/apidoc.html](https://npmdoc.github.io/node-npmdoc-{{env.npm_package_name}}/build/apidoc.html) \
+\n\
+\n\
 [![apidoc](https://npmdoc.github.io/node-npmdoc-{{env.npm_package_name}}/build/screenCapture.buildCi.browser.%252Ftmp%252Fbuild%252Fapidoc.html.png)](https://npmdoc.github.io/node-npmdoc-{{env.npm_package_name}}/build/apidoc.html) \
 \n\
 \n\
@@ -10218,10 +10243,19 @@ local.assetsDict['/assets.readmeCustomOrg.npmtest.template.md'] = '\
 | build-artifacts : | [![build-artifacts](https://npmtest.github.io/node-npmtest-{{env.npm_package_name}}/glyphicons_144_folder_open.png)](https://github.com/npmtest/node-npmtest-{{env.npm_package_name}}/tree/gh-pages/build)| \
 \n\
 \n\
+- [https://npmtest.github.io/node-npmtest-{{env.npm_package_name}}/build/coverage.html/index.html](https://npmtest.github.io/node-npmtest-{{env.npm_package_name}}/build/coverage.html/index.html) \
+\n\
+\n\
 [![istanbul-coverage](https://npmtest.github.io/node-npmtest-{{env.npm_package_name}}/build/screenCapture.buildCi.browser.%252Ftmp%252Fbuild%252Fcoverage.lib.html.png)](https://npmtest.github.io/node-npmtest-{{env.npm_package_name}}/build/coverage.html/index.html) \
 \n\
 \n\
+- [https://npmtest.github.io/node-npmtest-{{env.npm_package_name}}/build/test-report.html](https://npmtest.github.io/node-npmtest-{{env.npm_package_name}}/build/test-report.html) \
+\n\
+\n\
 [![test-report](https://npmtest.github.io/node-npmtest-{{env.npm_package_name}}/build/screenCapture.buildCi.browser.%252Ftmp%252Fbuild%252Ftest-report.html.png)](https://npmtest.github.io/node-npmtest-{{env.npm_package_name}}/build/test-report.html) \
+\n\
+\n\
+- [https://npmdoc.github.io/node-npmdoc-{{env.npm_package_name}}/build/apidoc.html](https://npmdoc.github.io/node-npmdoc-{{env.npm_package_name}}/build/apidoc.html) \
 \n\
 \n\
 [![apidoc](https://npmdoc.github.io/node-npmdoc-{{env.npm_package_name}}/build/screenCapture.buildCi.browser.%252Ftmp%252Fbuild%252Fapidoc.html.png)](https://npmdoc.github.io/node-npmdoc-{{env.npm_package_name}}/build/apidoc.html) \
@@ -19931,7 +19965,7 @@ local.templateUiResponseAjax = '\
         global.utility2_rollup;
     local.local = local;
 /* jslint-ignore-begin */
-local._stateInit({"utility2":{"assetsDict":{"/assets.index.template.html":"<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>{{env.npm_package_name}} (v{{env.npm_package_version}})</title>\n<style>\n/*csslint\n    box-sizing: false,\n    universal-selector: false\n*/\n* {\n    box-sizing: border-box;\n}\nbody {\n    background: #dde;\n    font-family: Arial, Helvetica, sans-serif;\n    margin: 2rem;\n}\nbody > * {\n    margin-bottom: 1rem;\n}\n.utility2FooterDiv {\n    margin-top: 20px;\n    text-align: center;\n}\n</style>\n<style>\n/*csslint\n*/\ntextarea {\n    font-family: monospace;\n    height: 10rem;\n    width: 100%;\n}\ntextarea[readonly] {\n    background: #ddd;\n}\n</style>\n</head>\n<body>\n<!-- utility2-comment\n<div id=\"ajaxProgressDiv1\" style=\"background: #d00; height: 2px; left: 0; margin: 0; padding: 0; position: fixed; top: 0; transition: background 0.5s, width 1.5s; width: 25%;\"></div>\nutility2-comment -->\n<h1>\n<!-- utility2-comment\n    <a\n        {{#if env.npm_package_homepage}}\n        href=\"{{env.npm_package_homepage}}\"\n        {{/if env.npm_package_homepage}}\n        target=\"_blank\"\n    >\nutility2-comment -->\n        {{env.npm_package_name}} (v{{env.npm_package_version}})\n<!-- utility2-comment\n    </a>\nutility2-comment -->\n</h1>\n<h3>{{env.npm_package_description}}</h3>\n<!-- utility2-comment\n<h4><a download href=\"assets.app.js\">download standalone app</a></h4>\n<button class=\"onclick onreset\" id=\"testRunButton1\">run internal test</button><br>\n<div id=\"testReportDiv1\" style=\"display: none;\"></div>\nutility2-comment -->\n\n\n\n<label>stderr and stdout</label>\n<textarea class=\"resettable\" id=\"outputTextareaStdout1\" readonly></textarea>\n<!-- utility2-comment\n{{#if isRollup}}\n<script src=\"assets.app.js\"></script>\n{{#unless isRollup}}\nutility2-comment -->\n<script src=\"assets.utility2.rollup.js\"></script>\n<script src=\"jsonp.utility2._stateInit?callback=window.utility2._stateInit\"></script>\n<script src=\"assets.npmdoc_express_generator.rollup.js\"></script>\n<script src=\"assets.example.js\"></script>\n<script src=\"assets.test.js\"></script>\n<!-- utility2-comment\n{{/if isRollup}}\nutility2-comment -->\n<div class=\"utility2FooterDiv\">\n    [ this app was created with\n    <a href=\"https://github.com/kaizhu256/node-utility2\" target=\"_blank\">utility2</a>\n    ]\n</div>\n</body>\n</html>\n"},"env":{"NODE_ENV":"test","npm_package_description":"api documentation for [express-generator (v4.15.0)](https://github.com/expressjs/generator#readme) [![npm package](https://img.shields.io/npm/v/npmdoc-express-generator.svg?style=flat-square)](https://www.npmjs.org/package/npmdoc-express-generator) [![travis-ci.org build-status](https://api.travis-ci.org/npmdoc/node-npmdoc-express-generator.svg)](https://travis-ci.org/npmdoc/node-npmdoc-express-generator)","npm_package_homepage":"https://github.com/npmdoc/node-npmdoc-express-generator","npm_package_name":"npmdoc-express-generator","npm_package_nameAlias":"npmdoc_express_generator","npm_package_version":"0.0.3"}}});
+local._stateInit({"utility2":{"assetsDict":{"/assets.index.template.html":"<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>{{env.npm_package_name}} (v{{env.npm_package_version}})</title>\n<style>\n/*csslint\n    box-sizing: false,\n    universal-selector: false\n*/\n* {\n    box-sizing: border-box;\n}\nbody {\n    background: #dde;\n    font-family: Arial, Helvetica, sans-serif;\n    margin: 2rem;\n}\nbody > * {\n    margin-bottom: 1rem;\n}\n.utility2FooterDiv {\n    margin-top: 20px;\n    text-align: center;\n}\n</style>\n<style>\n/*csslint\n*/\ntextarea {\n    font-family: monospace;\n    height: 10rem;\n    width: 100%;\n}\ntextarea[readonly] {\n    background: #ddd;\n}\n</style>\n</head>\n<body>\n<!-- utility2-comment\n<div id=\"ajaxProgressDiv1\" style=\"background: #d00; height: 2px; left: 0; margin: 0; padding: 0; position: fixed; top: 0; transition: background 0.5s, width 1.5s; width: 25%;\"></div>\nutility2-comment -->\n<h1>\n<!-- utility2-comment\n    <a\n        {{#if env.npm_package_homepage}}\n        href=\"{{env.npm_package_homepage}}\"\n        {{/if env.npm_package_homepage}}\n        target=\"_blank\"\n    >\nutility2-comment -->\n        {{env.npm_package_name}} (v{{env.npm_package_version}})\n<!-- utility2-comment\n    </a>\nutility2-comment -->\n</h1>\n<h3>{{env.npm_package_description}}</h3>\n<!-- utility2-comment\n<h4><a download href=\"assets.app.js\">download standalone app</a></h4>\n<button class=\"onclick onreset\" id=\"testRunButton1\">run internal test</button><br>\n<div id=\"testReportDiv1\" style=\"display: none;\"></div>\nutility2-comment -->\n\n\n\n<label>stderr and stdout</label>\n<textarea class=\"resettable\" id=\"outputTextareaStdout1\" readonly></textarea>\n<!-- utility2-comment\n{{#if isRollup}}\n<script src=\"assets.app.js\"></script>\n{{#unless isRollup}}\nutility2-comment -->\n<script src=\"assets.utility2.rollup.js\"></script>\n<script src=\"jsonp.utility2._stateInit?callback=window.utility2._stateInit\"></script>\n<script src=\"assets.npmdoc_express_generator.rollup.js\"></script>\n<script src=\"assets.example.js\"></script>\n<script src=\"assets.test.js\"></script>\n<!-- utility2-comment\n{{/if isRollup}}\nutility2-comment -->\n<div class=\"utility2FooterDiv\">\n    [ this app was created with\n    <a href=\"https://github.com/kaizhu256/node-utility2\" target=\"_blank\">utility2</a>\n    ]\n</div>\n</body>\n</html>\n"},"env":{"NODE_ENV":"test","npm_package_description":"api documentation for [express-generator (v4.15.0)](https://github.com/expressjs/generator#readme) [![npm package](https://img.shields.io/npm/v/npmdoc-express-generator.svg?style=flat-square)](https://www.npmjs.org/package/npmdoc-express-generator) [![travis-ci.org build-status](https://api.travis-ci.org/npmdoc/node-npmdoc-express-generator.svg)](https://travis-ci.org/npmdoc/node-npmdoc-express-generator)","npm_package_homepage":"https://github.com/npmdoc/node-npmdoc-express-generator","npm_package_name":"npmdoc-express-generator","npm_package_nameAlias":"npmdoc_express_generator","npm_package_version":"0.0.1"}}});
 /* jslint-ignore-end */
 }());
 /* script-end local._stateInit */
