@@ -115,15 +115,5 @@
 
 
 
-# <a name="apidoc.tableOfContents"></a>[table of contents](#apidoc.tableOfContents)
-
-#### [module express-generator](#apidoc.module.express-generator)
-
-
-
-# <a name="apidoc.module.express-generator"></a>[module express-generator](#apidoc.module.express-generator)
-
-
-
 # misc
 - this document was created with [utility2](https://github.com/kaizhu256/node-utility2)
